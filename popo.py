@@ -11,17 +11,94 @@ class Color:
     def get_color(self):
         return random.choice(Color.colors)
 
+class Ball:
+    radius = 20
+    light_pos = (0.4, 0.4)
+    initial_speed=0.6
+
+    def __init__(self, board, angle, color):
+        self.speed = Ball.initial_speed
+        self.board = board
+        self.x, self.y = (board.left+board.width / 2, board.height)
+        self.color = color
+        self.angle = angle
+        self.may_drop = False
+        self.hanging = False
+        self.surf = None
+        self.create_surf()
+        self.row, self.col = -100, -100
+
+    def create_surf(self):
+        x0 = self.radius
+        y0 = self.radius
+        x1 = x0 + int(self.light_pos[0] * self.radius)
+        y1 = y0 + int(self.light_pos[1] * self.radius)
+
+        transparent = pg.Color('white')
+        self.surf = pg.surface.Surface((x0 * 2 + 1, y0 * 2 + 1))
+        self.surf.fill(transparent)
+        self.surf.set_colorkey(transparent)
+
+        for i in range(x0 * 2 + 1):
+            for j in range(y0 * 2 + 1):
+                d = ((i - x0) ** 2 + (j - y0) ** 2) ** 0.5
+                if d > self.radius + 1:
+                    continue
+                else:
+                    # rate of color intensity change
+                    d2 = min(1, ((i - x1) ** 2 + (j - y1) ** 2) ** 0.5 / self.radius)
+
+                    # apply color
+                    color = [255 - (255 - x) * d2 for x in self.color]
+
+                    if d > self.radius:  # anti-alising
+                        alfa = d - self.radius
+                        bg = pg.Color('white')
+                        color = [c * (1 - alfa) + b * alfa for c, b in zip(color, bg)]
+
+                    self.surf.set_at((i, j), color)
+
+    def move(self):
+        self.x -= math.cos(self.angle) * self.speed
+        self.y -= math.sin(self.angle) * self.speed
+        if (self.x <= self.board.left+self.radius) or (self.x + self.radius >= self.board.left+self.board.width):
+            self.angle = math.pi - self.angle
+        if self in self.board.balls and (self.y<=self.board.top+self.radius or self.hit_ball(self.board.balls)):
+            self.speed=0
+            self.x, self.y, self.row, self.col = self.board.closest(self.x, self.y)
+            self.board.ball_stopped(self)
+        if self.y>=self.board.height and self in self.board.dropping_balls:
+            self.board.dropping_balls.remove(self)
+
+    def draw(self):
+        # pg.draw.circle(self.board.screen, tuple(color), (round(self.x), round(self.y)), self.radius,0)
+        self.board.screen.blit(self.surf, (int(self.x - self.radius), int(self.y - self.radius)))
+        # pg.draw.circle(self.board.screen, (0, 0, 0), (round(self.x), round(self.y)), self.radius, 1)
+
+    def hit_wall(self):
+        if (self.x <= self.radius) or (self.x + self.radius >= self.board.width):
+            self.angle = math.pi - self.angle
+        return self.y <= self.board.top + self.radius
+
+    def hit_ball(self, balls):
+        for ball in balls:
+            if ball.speed==0 and self != ball:
+                if math.sqrt((self.x - ball.x) ** 2 + (self.y - ball.y) ** 2) <= self.radius * 2:
+                    return ball
+        return None
 
 class Board:
-    width = 300
+    width = Ball.radius*7*2+1
     height = 600
 
-    def __init__(self, screen):
+    def __init__(self, screen,left=0):
         self.gun = Gun(self)
         self.balls = []
         self.dropping_balls = []
         self.screen = screen
         self.next_color = Color().get_color()
+        self.next_next_color = Color().get_color()
+        self.left=left
         self.top = 0
         self.ball_positions = []
         self.move_delay = 3
@@ -30,19 +107,19 @@ class Board:
 
     def generate_ball_positions(self):
         self.ball_positions = []
-        x = Ball.radius
+        x = self.left+Ball.radius
         y = Ball.radius + self.top
         row, column = 0, 0
         while y <= self.height - Ball.radius:
             self.ball_positions.append([])
-            while x < self.width - Ball.radius:
+            while x <= self.left+self.width - Ball.radius:
                 self.ball_positions[row].append((x, y))
                 x += Ball.radius * 2
             row += 1
             if row % 2 == 0:
-                x = Ball.radius
+                x = self.left+Ball.radius
             else:
-                x = Ball.radius * 2
+                x = self.left+Ball.radius * 2
             y += math.sqrt(3) * Ball.radius
             y = round(y)
 
@@ -62,23 +139,28 @@ class Board:
             self.gun.angle = math.atan((self.height - y) / (self.width / 2 - x))
             if self.gun.angle < 0:
                 self.gun.angle += math.pi
+        self.shoot()
+
+    def shoot(self):
         ball = Ball(self, angle=self.gun.angle, color=self.next_color)
         self.balls.append(ball)
-        self.next_color = Color().get_color()
-        while True:
-            ball.move()
-            self.draw()
-            if ball.hit_wall():
-                break
-            if ball.hit_ball(self.balls):
-                break
-        ball.x, ball.y, ball.row, ball.col = self.closest(ball.x, ball.y)
-        self.draw()
+        self.next_color=self.next_next_color
+        self.next_next_color = Color().get_color()
+
+    def ball_stopped(self,ball):
         for b in self.balls:
             b.may_drop = False
             b.hanging = False
         self.mark_drop(ball)
         self.drop()
+
+    def process(self):
+        for ball in self.balls:
+            if ball.speed!=0:
+                ball.move()
+        for ball in self.dropping_balls:
+                ball.move()
+        self.gun.turn()
         self.draw()
 
     def closest(self, x, y):
@@ -95,7 +177,8 @@ class Board:
         return new_x, new_y, new_row, new_col
 
     def draw(self):
-        self.screen.fill((255, 255, 255))
+        pg.draw.rect(self.screen,(255, 255, 255),pg.Rect(self.left-1,0,self.width+2,self.height),0)
+        pg.draw.rect(self.screen,(0,0,0),pg.Rect(self.left-1,0,self.width+2,self.height),1)
         self.gun.draw()
 
         for row in self.ball_positions:
@@ -163,22 +246,18 @@ class Board:
         if total_drop >= 3:
             for ball in self.balls[:]:
                 if ball.may_drop:
-                    self.balls.remove(ball)
-                    ball.angle = -math.pi / 2
-                    self.dropping_balls.append(ball)
+                    self.drop_ball(ball)
             for ball in self.get_balls_by_row(0):
                 self.mark_hang(ball)
             for ball in self.balls[:]:
-                if not ball.hanging:
-                    self.balls.remove(ball)
-                    ball.angle = -math.pi / 2
-                    self.dropping_balls.append(ball)
-            while len(self.dropping_balls) > 0:
-                for ball in self.dropping_balls[:]:
-                    ball.move()
-                    if ball.y >= self.height:
-                        self.dropping_balls.remove(ball)
-                self.draw()
+                if (not ball.hanging) and (ball.speed==0):
+                    self.drop_ball(ball)
+
+    def drop_ball(self,ball):
+        self.balls.remove(ball)
+        ball.angle = -math.pi / 2
+        ball.speed = Ball.initial_speed
+        self.dropping_balls.append(ball)
 
     def mark_hang(self, ball):
         if ball.row == 0:
@@ -199,100 +278,86 @@ class Board:
             self.generate_ball_positions()
             self.draw()
 
+    def key_down(self,event):
+        if event.key == ord('a'):
+            self.gun.angle_turned = -math.pi / 10000
+        if event.key == ord('q'):
+            self.gun.angle_turned = -math.pi / 100000
+        if event.key == ord('d'):
+            self.gun.angle_turned = math.pi / 10000
+        if event.key == ord('e'):
+            self.gun.angle_turned = math.pi / 100000
+        if event.key == ord('s') or event.key==ord('w'):
+            self.shoot()
 
-class Ball:
-    radius = 20
-    light_pos = (0.4, 0.4)
-
-    def __init__(self, board, angle, color):
-        self.speed = 0.6
-        self.board = board
-        self.x, self.y = (board.width / 2, board.height)
-        self.color = color
-        self.angle = angle
-        self.may_drop = False
-        self.hanging = False
-        self.surf = None
-        self.create_surf()
-        self.row, self.col = 0, 0
-
-    def create_surf(self):
-        x0 = self.radius
-        y0 = self.radius
-        x1 = x0 + int(self.light_pos[0] * self.radius)
-        y1 = y0 + int(self.light_pos[1] * self.radius)
-
-        transparent = pg.Color('white')
-        self.surf = pg.surface.Surface((x0 * 2 + 1, y0 * 2 + 1))
-        self.surf.fill(transparent)
-        self.surf.set_colorkey(transparent)
-
-        for i in range(x0 * 2 + 1):
-            for j in range(y0 * 2 + 1):
-                d = ((i - x0) ** 2 + (j - y0) ** 2) ** 0.5
-                if d > self.radius + 1:
-                    continue
-                else:
-                    # rate of color intensity change
-                    d2 = min(1, ((i - x1) ** 2 + (j - y1) ** 2) ** 0.5 / self.radius)
-
-                    # apply color
-                    color = [255 - (255 - x) * d2 for x in self.color]
-
-                    if d > self.radius:  # anti-alising
-                        alfa = d - self.radius
-                        bg = pg.Color('white')
-                        color = [c * (1 - alfa) + b * alfa for c, b in zip(color, bg)]
-
-                    self.surf.set_at((i, j), color)
-
-    def move(self):
-        self.x -= math.cos(self.angle) * self.speed
-        self.y -= math.sin(self.angle) * self.speed
-
-    def draw(self):
-        # pg.draw.circle(self.board.screen, tuple(color), (round(self.x), round(self.y)), self.radius,0)
-        self.board.screen.blit(self.surf, (int(self.x - self.radius), int(self.y - self.radius)))
-        # pg.draw.circle(self.board.screen, (0, 0, 0), (round(self.x), round(self.y)), self.radius, 1)
-
-    def hit_wall(self):
-        if (self.x <= self.radius) or (self.x + self.radius >= self.board.width):
-            self.angle = math.pi - self.angle
-        return self.y <= self.board.top + self.radius
-
-    def hit_ball(self, balls):
-        for ball in balls:
-            if self != ball:
-                if math.sqrt((self.x - ball.x) ** 2 + (self.y - ball.y) ** 2) <= self.radius * 2:
-                    return ball
-        return None
-
+    def key_up(self,event):
+        if event.key == ord('a') or event.key==ord('q'):
+            self.gun.angle_turned = 0
+        if event.key == ord('d') or event.key==ord('e'):
+            self.gun.angle_turned = 0
 
 class Gun:
-    length = 50
+    length = 60
 
     def __init__(self, board):
         self.board = board
         self.angle = math.pi / 2
+        self.angle_turned=0
+        self.assistance=False
+
+    def turn(self):
+        if (self.angle<=0 and self.angle_turned<0) or (self.angle>=math.pi and self.angle_turned>0):
+            return
+        self.angle+=self.angle_turned
 
     def draw(self):
-        pg.draw.line(self.board.screen, (0, 0, 0), (self.board.width / 2, self.board.height),
-                     (self.board.width / 2 - self.length * math.cos(self.angle),
+        radius=10
+        if self.assistance:
+            if self.angle==math.pi/2:
+                y=0
+                x=self.board.left+self.board.width/2
+            elif math.atan(self.board.height/(self.board.width/2))<self.angle<math.pi-math.atan(self.board.height/(self.board.width/2)):
+                y=0
+                x=self.board.left+self.board.width/2-self.board.height/math.tan(self.angle)
+            elif self.angle<math.atan(self.board.height/(self.board.width/2)):
+                x=self.board.left
+                y=self.board.height-self.board.width/2*math.tan(self.angle)
+            else:
+                x=self.board.left+self.board.width
+                y = self.board.height- self.board.width / 2 * math.tan(math.pi-self.angle)
+            pg.draw.line(self.board.screen, (200,200,200), (self.board.left + self.board.width / 2, self.board.height),
+                         (x,y))
+            pg.draw.line(self.board.screen, (0, 0, 0), (self.board.left + self.board.width / 2, self.board.height),
+                         (self.board.left + self.board.width / 2 - self.length * math.cos(self.angle),
+                          self.board.height - self.length * math.sin(self.angle)))
+        pg.draw.line(self.board.screen, (0, 0, 0), (self.board.left+self.board.width / 2, self.board.height),
+                     (self.board.left+self.board.width / 2 - self.length * math.cos(self.angle),
                       self.board.height - self.length * math.sin(self.angle)))
-        pg.draw.circle(self.board.screen, self.board.next_color, (self.board.width // 2, self.board.height), 10, 0)
-        pg.draw.circle(self.board.screen, (0, 0, 0), (self.board.width // 2, self.board.height), 10, 1)
+        c1=( int(self.board.left+self.board.width/2-math.cos(self.angle)*radius*3),
+             int(self.board.height-math.sin(self.angle)*radius*3) )
+        c2 = (int(self.board.left+self.board.width / 2 - math.cos(self.angle) * radius),
+              int(self.board.height - math.sin(self.angle) * radius))
+        pg.draw.circle(self.board.screen, self.board.next_color, c1, radius, 0)
+        pg.draw.circle(self.board.screen, (0, 0, 0), c1, radius, 1)
+        pg.draw.circle(self.board.screen, self.board.next_next_color, c2, radius, 0)
+        pg.draw.circle(self.board.screen, (0, 0, 0), c2, radius, 1)
 
 
 class Game:
     def run(self):
         pg.init()
-        screen = pg.display.set_mode((Board.width, Board.height))
-        board = Board(screen)
+        screen = pg.display.set_mode(((Board.width+2)*2, Board.height))
+        board = Board(screen,1)
+        board2=Board(screen,Board.width+3)
         board.screen = screen
         board.draw()
+        board2.screen=screen
+        board2.gun.assistance=True
+        board2.draw()
         running = True
+
         while running:
-            board.move()
+            #board.move()
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     running = False
@@ -302,6 +367,12 @@ class Game:
                 if event.type == pg.MOUSEBUTTONDOWN:
                     (x, y) = event.pos
                     board.mouse_down(x, y)
+                if event.type==pg.KEYDOWN:
+                    board2.key_down(event)
+                if event.type == pg.KEYUP:
+                    board2.key_up(event)
+            board.process()
+            board2.process()
         pg.quit()
 
 Game().run()

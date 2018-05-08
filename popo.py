@@ -14,7 +14,7 @@ class Color:
 class Ball:
     radius = 20
     light_pos = (0.4, 0.4)
-    initial_speed=0.6
+    initial_speed=1
 
     def __init__(self, board, angle, color):
         self.speed = Ball.initial_speed
@@ -88,7 +88,7 @@ class Ball:
         return None
 
 class Board:
-    width = Ball.radius*7*2+1
+    width = Ball.radius*12*2+1
     height = 600
 
     def __init__(self, screen,left=0):
@@ -104,6 +104,8 @@ class Board:
         self.move_delay = 3
         self.last_move = time.time()
         self.generate_ball_positions()
+        self.left_key=self.right_key=self.fine_left_key=self.fine_right_key=self.shoot_key=self.assistant_key=None
+        self.opponent=None
 
     def generate_ball_positions(self):
         self.ball_positions = []
@@ -124,19 +126,23 @@ class Board:
             y = round(y)
 
     def mouse_move(self, x, y):
-        if x == self.width / 2:
+        if not pg.Rect(self.left,self.top,self.width,self.height).collidepoint(x,y):
+            return
+        if x == self.left+self.width / 2:
             self.gun.angle = math.pi / 2
         else:
-            self.gun.angle = math.atan((self.height - y) / (self.width / 2 - x))
+            self.gun.angle = math.atan((self.height - y) / (self.left+self.width / 2 - x))
             if self.gun.angle < 0:
                 self.gun.angle += math.pi
         self.draw()
 
     def mouse_down(self, x, y):
-        if x == self.width / 2:
+        if not pg.Rect(self.left,self.top,self.width,self.height).collidepoint(x,y):
+            return
+        if x == self.left+self.width / 2:
             self.gun.angle = math.pi / 2
         else:
-            self.gun.angle = math.atan((self.height - y) / (self.width / 2 - x))
+            self.gun.angle = math.atan((self.height - y) / (self.left+self.width / 2 - x))
             if self.gun.angle < 0:
                 self.gun.angle += math.pi
         self.shoot()
@@ -251,7 +257,9 @@ class Board:
                 self.mark_hang(ball)
             for ball in self.balls[:]:
                 if (not ball.hanging) and (ball.speed==0):
+                    total_drop+=1
                     self.drop_ball(ball)
+            self.opponent.add_random_balls(total_drop)
 
     def drop_ball(self,ball):
         self.balls.remove(ball)
@@ -279,22 +287,35 @@ class Board:
             self.draw()
 
     def key_down(self,event):
-        if event.key == ord('a'):
-            self.gun.angle_turned = -math.pi / 10000
-        if event.key == ord('q'):
+        if event.key==self.assistant_key:
+            self.gun.assistance=True
+        if event.key == self.left_key:
+            self.gun.angle_turned = -math.pi / 5000
+        if event.key == self.fine_left_key:
             self.gun.angle_turned = -math.pi / 100000
-        if event.key == ord('d'):
-            self.gun.angle_turned = math.pi / 10000
-        if event.key == ord('e'):
+        if event.key == self.right_key:
+            self.gun.angle_turned = math.pi / 5000
+        if event.key == self.fine_right_key:
             self.gun.angle_turned = math.pi / 100000
-        if event.key == ord('s') or event.key==ord('w'):
+        if event.key == self.shoot_key:
             self.shoot()
 
     def key_up(self,event):
-        if event.key == ord('a') or event.key==ord('q'):
+        if event.key==self.assistant_key:
+            self.gun.assistance=False
+        if event.key in [self.left_key,self.right_key,self.fine_left_key,self.fine_right_key]:
             self.gun.angle_turned = 0
-        if event.key == ord('d') or event.key==ord('e'):
-            self.gun.angle_turned = 0
+
+    def add_random_balls(self,number):
+        number=min(number,self.width//(Ball.radius*2))
+        pos=list(range(self.width//(Ball.radius*2)))
+        random.shuffle(pos)
+        pos=pos[:number]
+        for i in pos:
+            ball = Ball(self, angle=math.pi/2, color=Color().get_color())
+            ball.x=self.left+i*Ball.radius*2+Ball.radius
+            ball.y=self.height
+            self.balls.append(ball)
 
 class Gun:
     length = 60
@@ -349,10 +370,25 @@ class Game:
         screen = pg.display.set_mode(((Board.width+2)*2, Board.height))
         board = Board(screen,1)
         board2=Board(screen,Board.width+3)
+        board.opponent=board2
+        board2.opponent=board
+
         board.screen = screen
         board.draw()
         board2.screen=screen
-        board2.gun.assistance=True
+        board.assistant_key=pg.K_SPACE
+        board.left_key=pg.K_a
+        board.right_key=pg.K_d
+        board.fine_left_key=pg.K_q
+        board.fine_right_key=pg.K_e
+        board.shoot_key=pg.K_w
+
+        board2.left_key=pg.K_KP1
+        board2.right_key=pg.K_KP3
+        board2.fine_left_key=pg.K_KP4
+        board2.fine_right_key=pg.K_KP6
+        board2.shoot_key=pg.K_KP5
+        board2.assistant_key=pg.K_KP0
         board2.draw()
         running = True
 
@@ -364,12 +400,17 @@ class Game:
                 if event.type == pg.MOUSEMOTION:
                     (x, y) = event.pos
                     board.mouse_move(x, y)
+                    board2.mouse_move(x, y)
                 if event.type == pg.MOUSEBUTTONDOWN:
                     (x, y) = event.pos
                     board.mouse_down(x, y)
+                    board2.mouse_down(x, y)
                 if event.type==pg.KEYDOWN:
+                    print(pg.key.name(event.key))
+                    board.key_down(event)
                     board2.key_down(event)
                 if event.type == pg.KEYUP:
+                    board.key_up(event)
                     board2.key_up(event)
             board.process()
             board2.process()

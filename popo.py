@@ -27,6 +27,7 @@ class Ball:
         self.surf = None
         self.create_surf()
         self.row, self.col = -100, -100
+        self.last_move=time.time()
 
     def create_surf(self):
         x0 = self.radius
@@ -59,8 +60,10 @@ class Ball:
                     self.surf.set_at((i, j), color)
 
     def move(self):
-        self.x -= math.cos(self.angle) * self.speed
-        self.y -= math.sin(self.angle) * self.speed
+        now=time.time()
+        self.x -= math.cos(self.angle) * self.speed *(now-self.last_move)*1000
+        self.y -= math.sin(self.angle) * self.speed *(now-self.last_move)*1000
+        self.last_move=now
         if (self.x <= self.board.left+self.radius) or (self.x + self.radius >= self.board.left+self.board.width):
             self.angle = math.pi - self.angle
         if self in self.board.balls and (self.y<=self.board.top+self.radius or self.hit_ball(self.board.balls)):
@@ -327,9 +330,8 @@ class Gun:
         self.assistance=False
 
     def turn(self):
-        if (self.angle<=0 and self.angle_turned<0) or (self.angle>=math.pi and self.angle_turned>0):
-            return
-        self.angle+=self.angle_turned
+        if (self.angle>0 and self.angle_turned<0) or (self.angle<math.pi and self.angle_turned>0):
+            self.angle+=self.angle_turned
 
     def draw(self):
         radius=10

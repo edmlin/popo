@@ -293,21 +293,27 @@ class Board:
         if event.key==self.assistant_key:
             self.gun.assistance=True
         if event.key == self.left_key:
-            self.gun.angle_turned = -math.pi / 5000
+            self.gun.turning_left=True
         if event.key == self.fine_left_key:
-            self.gun.angle_turned = -math.pi / 100000
+            self.gun.turning_left_fine=True
         if event.key == self.right_key:
-            self.gun.angle_turned = math.pi / 5000
+            self.gun.turning_right=True
         if event.key == self.fine_right_key:
-            self.gun.angle_turned = math.pi / 100000
+            self.gun.turning_right_fine=True
         if event.key == self.shoot_key:
             self.shoot()
 
     def key_up(self,event):
         if event.key==self.assistant_key:
             self.gun.assistance=False
-        if event.key in [self.left_key,self.right_key,self.fine_left_key,self.fine_right_key]:
-            self.gun.angle_turned = 0
+        if event.key == self.left_key:
+            self.gun.turning_left=False
+        if event.key == self.fine_left_key:
+            self.gun.turning_left_fine=False
+        if event.key == self.right_key:
+            self.gun.turning_right=False
+        if event.key == self.fine_right_key:
+            self.gun.turning_right_fine=False
 
     def add_random_balls(self,number):
         number=min(number,self.width//(Ball.radius*2))
@@ -328,10 +334,25 @@ class Gun:
         self.angle = math.pi / 2
         self.angle_turned=0
         self.assistance=False
+        self.turning_left=self.turning_right=self.turning_left_fine=self.turning_right_fine=False
+        self.turning_speed=math.pi/5
+        self.turning_fine_speed=math.pi/20
+        self.last_turned=time.time()
 
     def turn(self):
+        now=time.time()
+        if self.turning_left:
+            self.angle_turned = - self.turning_speed * (now-self.last_turned)
+        elif self.turning_right:
+            self.angle_turned = self.turning_speed * (now - self.last_turned)
+        elif self.turning_left_fine:
+            self.angle_turned = - self.turning_fine_speed * (now-self.last_turned)
+        elif self.turning_right_fine:
+            self.angle_turned = self.turning_fine_speed * (now - self.last_turned)
+
         if (self.angle>0 and self.angle_turned<0) or (self.angle<math.pi and self.angle_turned>0):
             self.angle+=self.angle_turned
+        self.last_turned=now
 
     def draw(self):
         radius=10

@@ -168,6 +168,7 @@ class Board:
             if ball.speed!=0:
                 ball.move()
         for ball in self.dropping_balls:
+            if ball.speed!=0:
                 ball.move()
         self.gun.turn()
         self.draw()
@@ -268,6 +269,7 @@ class Board:
         self.balls.remove(ball)
         ball.angle = -math.pi / 2
         ball.speed = Ball.initial_speed
+        ball.last_move=time.time()
         self.dropping_balls.append(ball)
 
     def mark_hang(self, ball):
@@ -349,7 +351,8 @@ class Gun:
             self.angle_turned = - self.turning_fine_speed * (now-self.last_turned)
         elif self.turning_right_fine:
             self.angle_turned = self.turning_fine_speed * (now - self.last_turned)
-
+        else:
+            self.angle_turned=0
         if (self.angle>0 and self.angle_turned<0) or (self.angle<math.pi and self.angle_turned>0):
             self.angle+=self.angle_turned
         self.last_turned=now

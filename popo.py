@@ -2,7 +2,13 @@ import pygame as pg
 import math
 import random
 import time
+import sys
 
+sys.path.append('..\\pynet')
+sys.path.append('..\\pyform')
+
+import PyNet as pn
+import PyForm as pf
 
 class Color:
     colors = [pg.Color('red'), pg.Color('green'), pg.Color('blue'), pg.Color('yellow'), pg.Color('orange'),
@@ -94,7 +100,7 @@ class Board:
     width = Ball.radius*12*2+1
     height = 600
 
-    def __init__(self, screen,left=0):
+    def __init__(self, screen,left=0,top=0):
         self.gun = Gun(self)
         self.balls = []
         self.dropping_balls = []
@@ -102,7 +108,7 @@ class Board:
         self.next_color = Color().get_color()
         self.next_next_color = Color().get_color()
         self.left=left
-        self.top = 0
+        self.top = top
         self.ball_positions = []
         self.move_delay = 3
         self.last_move = time.time()
@@ -187,8 +193,8 @@ class Board:
         return new_x, new_y, new_row, new_col
 
     def draw(self):
-        pg.draw.rect(self.screen,(255, 255, 255),pg.Rect(self.left-1,0,self.width+2,self.height),0)
-        pg.draw.rect(self.screen,(0,0,0),pg.Rect(self.left-1,0,self.width+2,self.height),1)
+        pg.draw.rect(self.screen,(255, 255, 255),pg.Rect(self.left-1,self.top,self.width+2,self.height),0)
+        pg.draw.rect(self.screen,(0,0,0),pg.Rect(self.left-1,self.top,self.width+2,self.height),1)
         self.gun.draw()
 
         for row in self.ball_positions:
@@ -391,31 +397,51 @@ class Gun:
 
 
 class Game:
-    def run(self):
+    def __init__(self):
         pg.init()
-        screen = pg.display.set_mode(((Board.width+2)*2, Board.height))
-        board = Board(screen,1)
-        board2=Board(screen,Board.width+3)
-        board.opponent=board2
-        board2.opponent=board
+        self.screen = pg.display.set_mode(((Board.width+2)*2, Board.height))
+        self.screen.fill(pg.Color("white"))
+        self.setup_menu()
+        self.setup_form()
+        self.setup_boards()
 
-        board.screen = screen
-        board.draw()
-        board2.screen=screen
-        board.assistant_key=pg.K_SPACE
-        board.left_key=pg.K_a
-        board.right_key=pg.K_d
-        board.fine_left_key=pg.K_q
-        board.fine_right_key=pg.K_e
-        board.shoot_key=pg.K_w
+    def setup_menu(self):
+        self.menu=pf.Menu(screen=self.screen)
+        self.menu.add_item("Settings")
+        def item_click(event):
+            self.form.open()
+        self.menu.controls[0].on_mouse_click=item_click
 
-        board2.left_key=pg.K_KP1
-        board2.right_key=pg.K_KP3
-        board2.fine_left_key=pg.K_KP4
-        board2.fine_right_key=pg.K_KP6
-        board2.shoot_key=pg.K_KP5
-        board2.assistant_key=pg.K_KP0
-        board2.draw()
+    def setup_form(self):
+        self.form=pf.PyForm(self.screen)
+        self.form.height=300
+        self.form.width=300
+        self.form.top=(self.screen.get_height()-self.form.height)//2
+        self.form.left=(self.screen.get_width()-self.form.width)//2
+
+    def setup_boards(self):
+        self.board = Board(self.screen,1,top=25)
+        self.board2=Board(self.screen,Board.width+3,top=25)
+        self.board.opponent=self.board2
+        self.board2.opponent=self.board
+        self.board.assistant_key=pg.K_SPACE
+        self.board.left_key=pg.K_a
+        self.board.right_key=pg.K_d
+        self.board.fine_left_key=pg.K_q
+        self.board.fine_right_key=pg.K_e
+        self.board.shoot_key=pg.K_w
+        self.board2.left_key=pg.K_KP1
+        self.board2.right_key=pg.K_KP3
+        self.board2.fine_left_key=pg.K_KP4
+        self.board2.fine_right_key=pg.K_KP6
+        self.board2.shoot_key=pg.K_KP5
+        self.board2.assistant_key=pg.K_KP0
+
+    def settings(self):
+        pass
+    def run(self):
+        self.board.draw()
+        self.board2.draw()
         running = True
 
         while running:
@@ -425,21 +451,22 @@ class Game:
                     running = False
                 if event.type == pg.MOUSEMOTION:
                     (x, y) = event.pos
-                    board.mouse_move(x, y)
-                    board2.mouse_move(x, y)
+                    self.board.mouse_move(x, y)
+                    self.board2.mouse_move(x, y)
                 if event.type == pg.MOUSEBUTTONDOWN:
                     (x, y) = event.pos
-                    board.mouse_down(x, y)
-                    board2.mouse_down(x, y)
+                    self.board.mouse_down(x, y)
+                    self.board2.mouse_down(x, y)
                 if event.type==pg.KEYDOWN:
                     print(pg.key.name(event.key))
-                    board.key_down(event)
-                    board2.key_down(event)
+                    self.board.key_down(event)
+                    self.board2.key_down(event)
                 if event.type == pg.KEYUP:
-                    board.key_up(event)
-                    board2.key_up(event)
-            board.process()
-            board2.process()
+                    self.board.key_up(event)
+                    self.board2.key_up(event)
+            self.menu.handle_event(event)
+            self.board.process()
+            self.board2.process()
         pg.quit()
 
 Game().run()
